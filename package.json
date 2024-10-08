@@ -1,10 +1,13 @@
 {
   "name": "pkg-patch",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "The command-line utility removes ads and other annoying messages from some popular packages.",
   "author": "Sergei Krainov",
   "license": "ISC",
-  "keywords": ["utils", "patch"],
+  "keywords": [
+    "utils",
+    "patch"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/itsib/pkg-patch.git"
