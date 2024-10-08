@@ -1,6 +1,6 @@
 {
   "name": "pkg-patch",
-  "version": "1.0.1",
+  "version": "1.0.0",
   "description": "The command-line utility removes ads and other annoying messages from some popular packages.",
   "author": "Sergei Krainov",
   "license": "ISC",
