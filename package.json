@@ -26,7 +26,7 @@
   "scripts": {
     "start": "node ./pkg-patch.js",
     "build": "tsc",
-    "preversion": "echo \"Release!!!\"",
+    "preversion": "echo \"Release!!!\" && npm run build",
     "postversion": "git push && git push --tags"
   },
   "devDependencies": {
