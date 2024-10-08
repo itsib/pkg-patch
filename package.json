@@ -1,6 +1,14 @@
 {
   "name": "pkg-patch",
   "version": "1.0.0",
+  "description": "The command-line utility removes ads and other annoying messages from some popular packages.",
+  "author": "Sergei Krainov",
+  "license": "ISC",
+  "keywords": ["utils", "patch"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/itsib/react-just-ui.git"
+  },
   "main": "./pkg-patch.js",
   "types": "./index.d.ts",
   "files": [
@@ -9,18 +17,15 @@
     "types.ts",
     "package.json"
   ],
-  "scripts": {
-    "start": "node ./pkg-patch.js",
-    "build": "tsc",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
   "bin": {
     "pkg-patch": "./pkg-patch.js"
   },
-  "keywords": ["utils", "patch"],
-  "author": "Sergei Krainov",
-  "license": "ISC",
-  "description": "",
+  "scripts": {
+    "start": "node ./pkg-patch.js",
+    "build": "tsc",
+    "preversion": "echo \"Release!!!\"",
+    "postversion": "git push && git push --tags"
+  },
   "devDependencies": {
     "@types/node": "^22.7.5",
     "typescript": "^5.6.2"
