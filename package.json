@@ -1,0 +1,28 @@
+{
+  "name": "pkg-patch",
+  "version": "1.0.0",
+  "main": "./pkg-patch.js",
+  "types": "./index.d.ts",
+  "files": [
+    "pkg-patch.ts",
+    "pkg-patch.js",
+    "types.ts",
+    "package.json"
+  ],
+  "scripts": {
+    "start": "node ./pkg-patch.js",
+    "build": "tsc",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "bin": {
+    "pkg-patch": "./pkg-patch.js"
+  },
+  "keywords": ["utils", "patch"],
+  "author": "Sergei Krainov",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "typescript": "^5.6.2"
+  }
+}
