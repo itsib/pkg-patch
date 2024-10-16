@@ -1,251 +1,217 @@
 #!/usr/bin/env node
-import { readdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { Command } from 'commander';
+import { glob } from 'glob';
+import pkg from './package.json';
+import { Config, ReplacerConfig, ReplacerPattern, ReplacerRange } from './types';
+import { Result } from './types/result';
 
-export type ReplacerType = 'range' | 'pattern'
-
-export interface ReplacerBase {
-  type: ReplacerType;
-  replacement: string;
+/**
+ * Split string to lines  with max length 100
+ * @param string
+ * @param maxLength
+ */
+function splitString(string: string, maxLength = 100): string[] {
+  const words = string.split(' ');
+  const result: string[] = [];
+  let index = 0;
+  for (let i = 0; i < words.length; i++) {
+    if ((result[index] || '').length + words[i].length > maxLength) {
+      index++;
+    }
+    result[index] = `${result[index] || ''} ${words[i]}`;
+  }
+  return result;
 }
 
-export interface ReplacerRange extends ReplacerBase {
-  type: 'range';
-  start: RegExp | number;
-  end: RegExp | number;
+/**
+ * Display patched files
+ * @param isFirst
+ * @param file
+ * @param result
+ */
+function logResult(isFirst: boolean, file: string, result: Result): void {
+  if (!isFirst) {
+    console.log('%s', '—'.repeat(100));
+  }
+  console.log('\x1b[0;97m  %s\x1b[0m', result.comment);
+
+  console.log('\x1b[0;92m✔\x1b[0m \x1b[0;37m%s\x1b[0m\n', file);
+
+  splitString(result.found).forEach(string => {
+    console.log('\x1b[0;31m-   %s\x1b[0m', string.trim().padEnd(102));
+  })
+
+  splitString(result.replacement).forEach(string => {
+    console.log('\x1b[0;32m+   %s\x1b[0m', string.trim().padEnd(102));
+  });
+  console.log('');
+
+
 }
 
-export interface ReplacerPattern extends ReplacerBase {
-  type: 'pattern';
-  pattern: RegExp;
-}
+/**
+ * Find replacer config for file path
+ * @param filepath
+ * @param config
+ */
+function getReplacerForFile(filepath: string, config: Config): ReplacerConfig | undefined {
+  const parts = filepath.split('/node_modules/');
+  const last = parts[parts.length - 1];
+  const segments = last.split('/');
+  const pkg = last.startsWith('@') ? `${segments[0]}/${segments[1]}` : segments[0];
+  const route = last.startsWith('@') ? segments.slice(2) : segments.slice(1);
 
-export type Replacer = ReplacerPattern | ReplacerRange;
+  for (let i = 0; i < config.replacers.length; i++) {
+    const replacer = config.replacers[i];
+    if (!replacer.packages.includes(pkg)) {
+      continue;
+    }
 
-export interface Config {
-  packages: string[];
-  filenames: string[];
-  comment: string;
-  replacer: Replacer;
-}
+    const isMatch = replacer.filenames.some(_filename => {
+      const _segments = _filename.split('/').reverse();
+      const lastRouteIndex = route.length - 1;
 
-export interface TableRow {
-  package: string;
-  file: string;
-  comment: string;
-}
-
-export interface TableWidths {
-  package: number;
-  file: number;
-  comment: number;
-}
-
-export interface TableData {
-  headers: TableRow;
-  rows: TableRow[];
-  widths: TableWidths;
-}
-
-const CONFIG: Config[] = [
-  {
-    packages: ['react-dom'],
-    filenames: ['react-dom.development.js'],
-    comment: 'Plugin advertising in browser console',
-    replacer: {
-      type: 'range',
-      start: /console\.info\(["']%cDownload the React DevTools/,
-      end: /["']font-weight:bold["']\)/,
-      replacement: '(function(){})()',
+      return _segments.every((_segment, index) => _segment === route[lastRouteIndex - index])
+    });
+    if (isMatch) {
+      return replacer;
     }
   }
-]
 
-function replacePattern(code: string, config: ReplacerPattern): string | null {
-  const result = config.pattern.exec(code);
+  return undefined;
+}
+
+/**
+ * Search with pattern replacer config
+ * @param content
+ * @param replacer
+ * @param comment
+ */
+function searchPattern(content: { code: string; }, replacer: ReplacerPattern, comment: string): null | Result {
+  const pattern = new RegExp(replacer.pattern);
+  const result = pattern.exec(content.code);
   if (!result) return null;
 
   const found = result[0];
-  let patched = code.slice(0, result.index);
-  patched += config.replacement;
-  patched += code.slice(result.index + (found.length));
-
-  return patched;
-}
-
-function replaceRange(code: string, config: ReplacerRange): string | null {
-  let startIndex: number;
-  if (typeof config.start === 'number') {
-    startIndex = config.start;
-  } else {
-    const result = config.start.exec(code);
-    if (!result) return null;
-    startIndex = result.index;
-  }
-
-  const beginChunk = code.slice(0, startIndex);
-  let endChunk: string;
-
-  if (typeof config.end === 'number') {
-    endChunk = code.slice(config.end);
-  } else {
-    endChunk = code.slice(startIndex);
-
-    const matched = config.end.exec(endChunk);
-    if (!matched) return null;
-    endChunk = endChunk.slice(matched.index + matched[0].length);
-  }
-
-  return beginChunk + config.replacement + endChunk;
-}
-
-/**
- * Find a line in the file and replace it with replacer.
- *
- * @param {string} filepath
- * @param {{ pattern:RegExp,replace:string }} replacer
- * @returns {Promise<boolean>}
- */
-async function searchAndPatch(filepath: string, replacer: Replacer): Promise<boolean> {
-  const contents = await readFile(filepath, { encoding: 'utf8' });
-
-  let patched: string | null = null;
-  if (replacer.type === 'pattern') {
-    patched = replacePattern(contents, replacer);
-  } else if (replacer.type === 'range') {
-    patched = replaceRange(contents, replacer);
-  }
-
-  if (!patched) return false;
-
-  await writeFile(filepath, patched, { encoding: 'utf8' });
-
-  return true;
-}
-
-/**
- *
- * @param {string} directory
- * @param {(string)[]} filenames
- * @param {{ pattern:RegExp,replace:string }} replace
- * @returns {Promise<Dirent[]>}
- */
-async function searchFiles(directory: string, filenames: string[], replace: Replacer): Promise<string[]> {
-  const patched: string[] = [];
-  const files = await readdir(directory, {
-    withFileTypes: true,
-    recursive: true,
-    encoding: 'utf8',
-  })
-    .catch(() => []);
-
-  for (const file of files) {
-    if (!file.isFile() || !filenames.includes(file.name)) {
-      continue;
-    }
-
-    const absolute = resolve(file.parentPath, file.name);
-    const result = await searchAndPatch(absolute, replace);
-    if (!result) {
-      continue;
-    }
-
-    patched.push(file.name);
-  }
-
-  return patched;
-}
-
-async function handleConfig(root: string, { packages, filenames, replacer }: Config) {
-  const results = [];
-
-  for (const pkg of packages) {
-    const pkgPath = resolve(root, pkg);
-    const patchedFilenames = await searchFiles(pkgPath, filenames, replacer);
-    if (!patchedFilenames.length) {
-      continue
-    }
-    results.push(...patchedFilenames.map(filename => ({ filename, package: pkg })));
-  }
-
-  return results as { filename: string, package: string }[];
-}
-
-function prepareTable(): TableData {
   return {
-    headers: {
-      package: 'Package',
-      file: 'File',
-      comment: 'Comment',
-    },
-    rows: [],
-    widths: {
-      package: 8,
-      file: 4,
-      comment: 7,
-    }
+    start: result.index,
+    end: result.index + (found.length),
+    replacement: replacer.replacement,
+    comment,
+    found,
+  };
+}
+
+/**
+ * Search with range replacer config
+ * @param content
+ * @param replacer
+ * @param comment
+ */
+function searchRange(content: { code: string; }, replacer: ReplacerRange, comment: string): null | Result {
+  const startPattern = new RegExp(replacer.start);
+  const endPattern = new RegExp(replacer.end);
+
+  let startIndex: number;
+  const startMatched = startPattern.exec(content.code);
+  if (!startMatched) return null;
+  startIndex = startMatched.index;
+
+  const endChunk = content.code.slice(startIndex);
+  const endMatched = endPattern.exec(endChunk);
+  if (!endMatched) return null;
+
+  const endIndex = endMatched.index + endMatched[0].length;
+  return {
+    start: startIndex,
+    end: endIndex,
+    replacement: replacer.replacement,
+    comment,
+    found: endChunk.slice(0, endIndex),
+  };
+}
+
+/**
+ * Check file content and prepare replace configuration
+ * @param filepath
+ * @param config
+ */
+async function searchAndReplace(filepath: string, config: Config): Promise<null | Result> {
+  filepath = join(config.cwd, filepath);
+  const content: { code: string; filepath: string } = {
+    code: await readFile(filepath, { encoding: 'utf8' }),
+    filepath,
+  };
+  const replaceConfig = getReplacerForFile(filepath, config);
+  if (!replaceConfig) {
+    throw new Error('No config found');
+  }
+
+  let prepared: Result | null;
+  switch (replaceConfig.replacer.type) {
+    case 'pattern':
+      prepared = searchPattern(content, replaceConfig.replacer, replaceConfig.comment);
+      break;
+    case 'range':
+      prepared = searchRange(content, replaceConfig.replacer, replaceConfig.comment);
+      break;
+  }
+
+  if (!prepared) return null;
+
+  if (config.write) {
+    let patched = content.code.slice(0, prepared.start);
+    patched += prepared.replacement;
+    patched += content.code.slice(prepared.end);
+
+    await writeFile(filepath, patched, { encoding: 'utf8' });
+  }
+
+  return prepared;
+}
+
+/**
+ * Search files in packages for pattern search
+ * @param config
+ */
+async function searchFiles(config: Config): Promise<string[]> {
+  const paths = config.replacers.flatMap(({ packages, filenames }) => {
+    return packages.map(pkg => filenames.map(filename => `**/node_modules/${pkg}/**/${filename}`));
+  }).flat();
+
+  return glob(paths, { cwd: config.cwd });
+}
+
+/**
+ * Command action callback
+ * @param params
+ */
+async function action(params: Pick<Config, 'cwd' | 'write'>) {
+  const config = { ...(pkg.config as Config), ...params };
+  const files = await searchFiles(config);
+
+  let first = true;
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+
+    const result = await searchAndReplace(file, config);
+    if (!result) continue;
+
+    logResult(first, file, result);
+
+    first = false;
   }
 }
 
-function renderTable(data: TableData): void {
-  const widths = [3, data.widths.package + 2, data.widths.file + 2, data.widths.comment + 2];
+const program = new Command();
 
-  console.log(`┌${widths.map(width => '─'.repeat(width)).join('┬')}┐`);
+export default program.name('pkg-patch')
+  .description(pkg.description)
+  .option('-w, --write', 'Enable file change. Apply and save all found changes.', false)
+  .option('-c, --cwd <path>', 'Base directory', process.cwd())
+  .version(pkg.version, '-v, --version', 'output the current version')
+  .action(action)
+  .parse();
 
-  console.log(`│   │ ${data.headers.package.padEnd(data.widths.package)} │ ${data.headers.file.padEnd(data.widths.file)} │ ${data.headers.comment.padEnd(data.widths.comment)} │`);
-
-  console.log(`├${widths.map(width => '─'.repeat(width)).join('┼')}┤`);
-
-  for (let i = 0; i < data.rows.length; i++) {
-    const row = data.rows[i];
-
-    const render = `│ \x1b[0;92m✔\x1b[0m ` +
-      `│ \x1b[0;93m${row.package.padEnd(data.widths.package)}\x1b[0m ` +
-      `│ \x1b[0;93m${row.file.padEnd(data.widths.file)}\x1b[0m ` +
-      `│ \x1b[2;95m${row.comment.padEnd(data.widths.comment)}\x1b[0m │`
-    console.log(render);
-  }
-
-  console.log(`└${widths.map(width => '─'.repeat(width)).join('┴')}┘`);
-
-}
-
-async function run(_configs: Config[]): Promise<void> {
-  const root = join(dirname(process.env.npm_package_json || './'), 'node_modules');
-
-  console.log(`\n\x1b[0;36mChecking packages to patch vulnerable files\x1b[0m`);
-  let isPatched = false;
-
-  const table: TableData = prepareTable();
-
-  for(const _config of _configs) {
-    const patched = await handleConfig(root, _config);
-
-    for (const file of patched) {
-      table.rows.push({
-        package: file.package,
-        file: file.filename,
-        comment: _config.comment,
-      });
-      table.widths.package = table.widths.package > file.package.length ? table.widths.package : file.package.length;
-      table.widths.file = table.widths.file > file.filename.length ? table.widths.file : file.filename.length;
-      table.widths.comment = table.widths.comment > _config.comment.length ? table.widths.comment :  _config.comment.length;
-
-      isPatched = true;
-    }
-  }
-
-  if (isPatched) {
-    renderTable(table);
-    console.log('\x1b[0;32m  Done!\x1b[0m');
-  } else {
-    console.log('\x1b[0;32m  No files found. It\'s good.\x1b[0m');
-  }
-}
-
-run(CONFIG)
-  .then(() => process.exit(0))
-  .catch(err => {
-    console.log(err);
-    process.exit(1);
-  });
