@@ -27,14 +27,10 @@ function splitString(string: string, maxLength = 100): string[] {
 
 /**
  * Display patched files
- * @param isFirst
  * @param file
  * @param result
  */
-function logResult(isFirst: boolean, file: string, result: Result): void {
-  if (!isFirst) {
-    console.log('%s', '—'.repeat(100));
-  }
+function logResult(file: string, result: Result): void {
   console.log('\x1b[0;97m  %s\x1b[0m', result.comment);
 
   console.log('\x1b[0;92m✔\x1b[0m \x1b[0;37m%s\x1b[0m\n', file);
@@ -48,7 +44,26 @@ function logResult(isFirst: boolean, file: string, result: Result): void {
   });
   console.log('');
 
+  console.log('%s', '—'.repeat(100));
+}
 
+function logHowRestore() {
+  console.log('To restore them to their previous state, you need to \nreinstall the npm packages.');
+  console.log('Just run:');
+
+  console.log('\x1b[0;34m');
+  console.log('   rm -rf node_modules');
+  console.log('   npm install');
+  console.log('\x1b[0m');
+}
+
+function logHowToWrite() {
+  console.log('By default, the script does not modify the npm package files.');
+  console.log('To overwrite the found files, run the command with the --write flag');
+
+  console.log('\x1b[0;34m');
+  console.log(`   npx %s --write`, pkg.name);
+  console.log('\x1b[0m');
 }
 
 /**
@@ -123,13 +138,13 @@ function searchRange(content: { code: string; }, replacer: ReplacerRange, commen
   const endMatched = endPattern.exec(endChunk);
   if (!endMatched) return null;
 
-  const endIndex = endMatched.index + endMatched[0].length;
+  const endIndexChunk = endMatched.index + endMatched[0].length;
   return {
     start: startIndex,
-    end: endIndex,
+    end: startIndex + endIndexChunk,
     replacement: replacer.replacement,
     comment,
-    found: endChunk.slice(0, endIndex),
+    found: endChunk.slice(0, endIndexChunk),
   };
 }
 
@@ -162,6 +177,7 @@ async function searchAndReplace(filepath: string, config: Config): Promise<null 
   if (!prepared) return null;
 
   if (config.write) {
+    console.log(prepared);
     let patched = content.code.slice(0, prepared.start);
     patched += prepared.replacement;
     patched += content.code.slice(prepared.end);
@@ -192,22 +208,30 @@ async function action(params: Pick<Config, 'cwd' | 'write'>) {
   const config = { ...(pkg.config as Config), ...params };
   const files = await searchFiles(config);
 
-  let first = true;
+  let isFound = false;
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
 
     const result = await searchAndReplace(file, config);
     if (!result) continue;
 
-    logResult(first, file, result);
+    logResult(file, result);
+    isFound = true;
+  }
 
-    first = false;
+  if (isFound) {
+    if (params.write) {
+      logHowRestore();
+    } else {
+      logHowToWrite();
+    }
+    console.log('\x1b[0;92m✔ Done!\x1b[0m');
   }
 }
 
 const program = new Command();
 
-export default program.name('pkg-patch')
+export default program.name(pkg.name)
   .description(pkg.description)
   .option('-w, --write', 'Enable file change. Apply and save all found changes.', false)
   .option('-c, --cwd <path>', 'Base directory', process.cwd())

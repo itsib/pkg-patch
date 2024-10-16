@@ -37,14 +37,10 @@ function splitString(string, maxLength = 100) {
 }
 /**
  * Display patched files
- * @param isFirst
  * @param file
  * @param result
  */
-function logResult(isFirst, file, result) {
-    if (!isFirst) {
-        console.log('%s', '—'.repeat(100));
-    }
+function logResult(file, result) {
     console.log('\x1b[0;97m  %s\x1b[0m', result.comment);
     console.log('\x1b[0;92m✔\x1b[0m \x1b[0;37m%s\x1b[0m\n', file);
     splitString(result.found).forEach(string => {
@@ -54,6 +50,22 @@ function logResult(isFirst, file, result) {
         console.log('\x1b[0;32m+   %s\x1b[0m', string.trim().padEnd(102));
     });
     console.log('');
+    console.log('%s', '—'.repeat(100));
+}
+function logHowRestore() {
+    console.log('To restore them to their previous state, you need to \nreinstall the npm packages.');
+    console.log('Just run:');
+    console.log('\x1b[0;34m');
+    console.log('   rm -rf node_modules');
+    console.log('   npm install');
+    console.log('\x1b[0m');
+}
+function logHowToWrite() {
+    console.log('By default, the script does not modify the npm package files.');
+    console.log('To overwrite the found files, run the command with the --write flag');
+    console.log('\x1b[0;34m');
+    console.log(`   npx %s --write`, package_json_1.default.name);
+    console.log('\x1b[0m');
 }
 /**
  * Find replacer config for file path
@@ -120,13 +132,13 @@ function searchRange(content, replacer, comment) {
     const endMatched = endPattern.exec(endChunk);
     if (!endMatched)
         return null;
-    const endIndex = endMatched.index + endMatched[0].length;
+    const endIndexChunk = endMatched.index + endMatched[0].length;
     return {
         start: startIndex,
-        end: endIndex,
+        end: startIndex + endIndexChunk,
         replacement: replacer.replacement,
         comment,
-        found: endChunk.slice(0, endIndex),
+        found: endChunk.slice(0, endIndexChunk),
     };
 }
 /**
@@ -157,6 +169,7 @@ function searchAndReplace(filepath, config) {
         if (!prepared)
             return null;
         if (config.write) {
+            console.log(prepared);
             let patched = content.code.slice(0, prepared.start);
             patched += prepared.replacement;
             patched += content.code.slice(prepared.end);
@@ -185,19 +198,28 @@ function action(params) {
     return __awaiter(this, void 0, void 0, function* () {
         const config = Object.assign(Object.assign({}, package_json_1.default.config), params);
         const files = yield searchFiles(config);
-        let first = true;
+        let isFound = false;
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
             const result = yield searchAndReplace(file, config);
             if (!result)
                 continue;
-            logResult(first, file, result);
-            first = false;
+            logResult(file, result);
+            isFound = true;
+        }
+        if (isFound) {
+            if (params.write) {
+                logHowRestore();
+            }
+            else {
+                logHowToWrite();
+            }
+            console.log('\x1b[0;92m✔ Done!\x1b[0m');
         }
     });
 }
 const program = new commander_1.Command();
-exports.default = program.name('pkg-patch')
+exports.default = program.name(package_json_1.default.name)
     .description(package_json_1.default.description)
     .option('-w, --write', 'Enable file change. Apply and save all found changes.', false)
     .option('-c, --cwd <path>', 'Base directory', process.cwd())
