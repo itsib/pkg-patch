@@ -57,6 +57,21 @@
           "pattern": "const\\sDEV_MODE\\s?=\\s?true;",
           "replacement": "const DEV_MODE = false;"
         }
+      },
+      {
+        "packages": [
+          "lottie-web"
+        ],
+        "filenames": [
+          "lottie.js",
+          "lottie.min.js"
+        ],
+        "comment": "Patch the eval ussage in lottie-web@5.12.2",
+        "replacer": {
+          "type": "pattern",
+          "pattern": "eval\\((:?'|\")\\[function\\s_expression_function\\(\\)\\{(:?'|\")\\s?\\+\\s?val\\s?\\+\\s?(:?'|\");scoped_bm_rt=\\$bm_rt}](:?'|\")\\)\\[0]",
+          "replacement": "(new Function(\"scoped_bm_rt\",val+\";return $bm_rt;\"))()"
+        }
       }
     ]
   },

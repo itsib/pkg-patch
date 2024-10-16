@@ -9,11 +9,13 @@
 
 - Patch React, remove message: 
 
-***Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools***
+***Download the `react-dom` DevTools for a better development experience: https://reactjs.org/link/react-devtools***
 
-- Patch Lit Element, remove message:
+- Patch `lit-element`, remove message:
 
 ***Lit is in dev mode. Not recommended for production!***
+
+- Patch `lottie-web`, remove not safety eval
 
 ## Usage:
 
