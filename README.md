@@ -1,6 +1,9 @@
-# pkg-patch
+<div style="text-align: center;">
+    <img src="logo.svg" width="100" height="100">
+    <h2>pkg-patch</h2>
+    <span>The command-line utility removes ads and other annoying messages from some popular packages.</span>
+</div>
 
-The command-line utility removes ads and other annoying messages from some popular packages.
 
 ## Features
 
