@@ -169,7 +169,6 @@ function searchAndReplace(filepath, config) {
         if (!prepared)
             return null;
         if (config.write) {
-            console.log(prepared);
             let patched = content.code.slice(0, prepared.start);
             patched += prepared.replacement;
             patched += content.code.slice(prepared.end);
